@@ -2,70 +2,70 @@ library(dplyr)
 library(Seurat)
 library(patchwork)
 
-# Load the WT Sham dataset
+## Load the WT Sham dataset
 wtsham.data <- Read10X(data.dir = "C:/Users/lindainesz/Desktop/WT_Sham/raw_feature_bc_matrix")
-# Initialize the Seurat object with the raw (non-normalized data).
+## Initialize the Seurat object with the raw (non-normalized data).
 wtsham <- CreateSeuratObject(counts = wtsham.data, project = "wtsham", min.cells = 300, min.features = 200)
 wtsham
-# The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+## The [[ operator can add columns to object metadata. This is a great place to stash QC stats
 wtsham[["percent.mt"]] <- PercentageFeatureSet(wtsham, pattern = "^MT-")
 
-# Check the percent.mt values
+## Check the percent.mt values
 print(summary(wtsham[["percent.mt"]]))
 
-# Filter out cells with high mitochondrial content
+## Filter out cells with high mitochondrial content
 wtsham <- subset(wtsham, subset = percent.mt < 5)
 
-# Visualize QC metrics as a violin plot
+## Visualize QC metrics as a violin plot
 VlnPlot(wtsham, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
 
-# FeatureScatter is typically used to visualize feature-feature relationships, but can be used
+## FeatureScatter is typically used to visualize feature-feature relationships, but can be used
 # for anything calculated by the object, i.e. columns in object metadata, PC scores etc.
 plot1 <- FeatureScatter(wtsham, feature1 = "nCount_RNA", feature2 = "percent.mt")
 plot2 <- FeatureScatter(wtsham, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
 plot1 + plot2
 
-# Normalization of the samples
+## Normalization of the samples
 wtsham <- NormalizeData(wtsham, normalization.method = "LogNormalize", scale.factor = 10000)
 wtsham <- NormalizeData(wtsham)
 
-# Identification of features
+## Identification of features
 wtsham <- FindVariableFeatures(wtsham, selection.method = "vst", nfeatures = 2000)
 
-# Identify the 10 most highly variable genes
+## Identify the 10 most highly variable genes
 top10 <- head(VariableFeatures(wtsham), 10)
 
-# Plot variable features with and without labels
+## Plot variable features with and without labels
 plot1 <- VariableFeaturePlot(wtsham)
 plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 plot1 + plot2
 
-# Scaling the data
+## Scaling the data
 all.genes <- rownames(wtsham)
 wtsham <- ScaleData(wtsham, features = all.genes)
 
-# Linear dimension scaling of the data
+## Linear dimension scaling of the data
 wtsham <- RunPCA(wtsham, features = VariableFeatures(object = wtsham))
 
-# Examine and visualize PCA results a few different ways
+## Examine and visualize PCA results a few different ways
 print(wtsham[["pca"]], dims = 1:5, nfeatures = 5)
 VizDimLoadings(wtsham, dims = 1:2, reduction = "pca")
 
-# Dimension reduction
+## Dimension reduction
 DimPlot(wtsham, reduction = "pca") + NoLegend()
 
-# Dimheatmap 
+## Dimheatmap 
 DimHeatmap(wtsham, dims = 1, cells = 500, balanced = TRUE)
 DimHeatmap(wtsham, dims = 1:15, cells = 500, balanced = TRUE)
 
-# Dimensionality of the dataset
+## Dimensionality of the dataset
 ElbowPlot(wtsham)
 
-# Clusters the Cells
+## Clusters the Cells
 wtsham <- FindNeighbors(wtsham, dims = 1:20)
 wtsham <- FindClusters(wtsham, resolution = 0.8)
 
-# Look at cluster IDs of the first 5 cells
+## Look at cluster IDs of the first 5 cells
 head(Idents(wtsham), 5)
 
 wtsham <- RunUMAP(wtsham, dims = 1:20)
@@ -73,15 +73,15 @@ wtsham <- RunUMAP(wtsham, dims = 1:20)
 # individual clusters
 DimPlot(wtsham, reduction = "umap")
 
-# Find all markers of cluster 2
+## Find all markers of cluster 2
 cluster2.markers <- FindMarkers(wtsham, ident.1 = 2)
 head(cluster2.markers, n = 5)
 
-# Find all markers of cluster 0
+## Find all markers of cluster 0
 cluster0.markers <- FindMarkers(wtsham, ident.1 = 0)
 head(cluster0.markers, n = 5)
 
-# Find markers for every cluster compared to all remaining cells, report only the positive ones
+## Find markers for every cluster compared to all remaining cells, report only the positive ones
 wtsham.markers <- FindAllMarkers(wtsham, only.pos = TRUE)
 wtsham.markers %>%
   group_by(cluster) %>%
@@ -89,7 +89,7 @@ wtsham.markers %>%
 
 cluster0.markers <- FindMarkers(wtsham, ident.1 = 0, logfc.threshold = 0.25, test.use = "roc", only.pos = TRUE)
 
-# Visualizing markers
+## Visualizing markers
 # Check if the genes exist in the dataset before plotting
 genes_to_plot <- c("Ccl5", "Plp1", "Sulf1", "Cd14", "EXT1", "Adam10", "EXTL3", "EXTL1", "NDST1", "MMP9", "Glce", "sulf2", "GPC")
 genes_to_plot <- genes_to_plot[genes_to_plot %in% rownames(wtsham)]
@@ -102,7 +102,7 @@ if (length(genes_to_plot) > 0) {
   message("None of the specified genes were found in the dataset.")
 }
 
-# DoHeatmap
+## DoHeatmap
 wtsham.markers %>%
   group_by(cluster) %>%
   dplyr::filter(avg_log2FC > 1) %>%
@@ -110,8 +110,8 @@ wtsham.markers %>%
   ungroup() -> top10
 DoHeatmap(wtsham, features = top10$gene) + NoLegend()
 
-# Save the Seurat object
+## Save the Seurat object
 saveRDS(wtsham, file = "wtsham_seurat_object.rds")
 
-# Load the Seurat object (if needed)
+## Load the Seurat object (if needed)
 # wtsham <- readRDS(file = "wtsham_seurat_object.rds")
