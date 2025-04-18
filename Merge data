@@ -1,0 +1,237 @@
+# Load required library 
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+library(celldex)   # Reference datasets for annotation
+library(scater)
+library(SingleR)
+library(pheatmap)
+library(SingleCellExperiment)
+library(SeuratDisk)
+library(tidyr)
+library(ggpubr)   # for stat_compare_means
+library(svglite)  # to export SVG files
+
+# 🗂 Load individual Seurat objects
+wt_sham <- Read10X(data.dir = "C:/Users/lindainesz/Desktop/WT_Sham/raw_feature_bc_matrix")
+wt_d3 <- Read10X(data.dir = "C:/Users/lindainesz/Desktop/WT_D3/raw_feature_bc_matrix")
+ecEXT1_sham <- Read10X(data.dir = "C:/Users/lindainesz/Desktop/Ve_Ext1_Sham/raw_feature_bc_matrix")
+ecEXT1_d3 <- Read10X(data.dir = "C:/Users/lindainesz/Desktop/Ve_Ext1_D3/raw_feature_bc_matrix")
+
+# 🔖 Add condition labels
+wt_sham$condition <- "WT_Sham"
+wt_d3$condition <- "WT_D3"
+ecEXT1_sham$condition <- "ecEXT1_Sham"
+ecEXT1_d3$condition <- "ecEXT1_D3"
+
+# 🔄 Merge all into one object
+tbi_merged_obj <- merge(wt_sham, y = list(wt_d3, ecEXT1_sham, ecEXT1_d3),
+                    add.cell.ids = c("WT_Sham", "WT_D3", "ecEXT1_Sham", "ecEXT1_D3"),
+                    project = "Merged_EXT1")
+
+# 🔬 Preprocessing: Normalize, find variable features, and scale
+tbi_merged_obj <- NormalizeData(tbi_merged_obj)
+tbi_merged_obj <- FindVariableFeatures(tbi_merged_obj)
+tbi_merged_obj <- ScaleData(tbi_merged_obj)
+
+# 🧬 Run PCA & UMAP
+set.seed(1234) # this is so that if you run the same code, UMAP coordinates and clustering do not vary and the data is reproducible
+tbi_merged_obj <- RunPCA(tbi_merged_obj, npcs = 30)
+ElbowPlot(tbi_merged_obj, ndims = 50)
+PC_Merge_variance<- Stdev(tbi_merged_obj)
+plot(cumsum(PC_Merge_variance^2) / sum(PC_Merge_variance^2), xlab="PCs", ylab="Cumulative Variance Explained", type="b")
+
+# UMAP
+tbi_merged_obj <- FindNeighbors(tbi_merged_obj, dims = 1:20)
+tbi_merged_obj <- FindClusters(tbi_merged_obj, resolution = 1.2)
+tbi_merged_obj <- RunUMAP(tbi_merged_obj, dims = 1:20)
+
+# 🎨 Plot UMAP colored by condition
+DimPlot(tbi_merged_obj, reduction = "umap", group.by = "condition", cols = c("blue", "red", "green", "orange")) +
+  ggtitle("WT & ecEXT1 Sham vs. D3") +
+  theme_void()
+
+
+# 📌 Identify Cluster Markers
+# Find marker genes for each cluster
+# Ensure that RNA assay layers are joined
+tbi_merged_obj <- JoinLayers(tbi_merged_obj, assay = "RNA")
+
+# Now, rerun FindAllMarkers
+tbimerge_cluster_markers <- FindAllMarkers(tbi_merged_obj, 
+                                          only.pos = TRUE, 
+                                          min.pct = 0.25, 
+                                          logfc.threshold = 0.25)
+
+
+# View top marker genes per cluster
+tbimerg_top_markers <- tbimerge_cluster_markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+print(tbimerg_top_markers)
+# Save TBI markers to file
+write.csv(tbimerg_top_markers, "tbimerge_cluster_markers.csv")  
+
+# 🔍 Identify Marker Genes for Each Cluster
+# This finds marker genes that define each cluster
+tbi_markers <- FindAllMarkers(tbimerged_obj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+# View top markers for each cluster
+top10_tbimarkers <- tbi_markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+View(top10_tbimarkers)
+
+
+# Example marker genes for Mouse brain cells types
+# marker genes for Neuron cells
+marker_genes_Neuron <- c("Snap25", "Tubb3", "Rbfox3", "Syt1")
+marker_genes_ExciNeuron <- c("Slc17a7", "Camk2a", "Grin1")
+marker_genes_InhiNeuron <- c("Gad1", "Gad2", "Slc32a1", "Pvalb")
+# marker genes for Astrocytes cells
+marker_genes_Astrocytes <- c("Gfap", "Aldh1l1", "Aqp4", "Slc1a3", "Sox9")
+# marker genes for Oligodendrocytes
+marker_genes_Oligodendrocytes <- c("Mbp", "Plp1", "Cnp", "Sox10")
+# marker genes for Oligodendrocyte Precursor Cells (OPCs)
+marker_genes_OPC <- c("Pdgfra", "Cspg4", "Olig2")
+# marker genes for Microglia
+marker_genes_Microglia <- c("Cx3cr1", "Aif1", "Ptprc", "Trem2")
+# marker genes for Endothelial Cells (EC)
+marker_genes_EC <- c("Pecam1", "Cldn5", "Kdr", "Vwf")
+# marker genes for Pericytes cells
+marker_genes_Pericytes <- c("Pdgfrb", "Rgs5", "Des")
+# marker genes for Ependymal cells
+marker_genes_Ependymal <- c("Foxj1", "Tmem212", "Syt1")
+# marker genes for Choroid Plexus Cells
+marker_genes_Choroid <- c("Ttr", "Aqp1", "Clic6")
+# marker genes for smooth muscle Cells (sm)
+marker_genes_sm <- c("Acta2", "Myh11", "Tagln", "Cnn1", "Des", "Smtn","Notch3")
+# marker genes for smooth muscle Cells (sm) second one
+marker_genes_sm1 <- c("Acta2", "Myh11", "Tagln", "Cnn1", "Des")
+# marker genes for macrophage cell
+marker_genes_macrophage <- c("Cd68", "Mrc2", "Cd14", "Itgax", "Ccr2", "Cd36", "Pparg")
+# marker genes for macrophage cell second one reduced 
+marker_genes_macrophage1 <- c("Cd68", "Cd14", "Ccr2", "Cd36", "Pparg")
+# marker genes for epithelium cells
+marker_genes_epitheluim <- c("Ttr", "Foxj1", "Epcam","Krt18")
+
+
+🧪 Visualize Markers per Cluster to Decide
+# Plot top marker genes per cluster
+#FeaturePlot
+FeaturePlot(tbi_merged_obj, features = c("Aqp4", "Gad1", "Pecam1", "Acta2", "Slc17a7"), split.by = "condition")
+#violin plots
+# violin plots for clarity
+VlnPlot(tbi_merged_obj, features = c("Aqp4", "Gad1", "Pecam1", "Acta2", "Slc17a7"), group.by = "seurat_clusters", pt.size = 0.1)
+
+🏷️ Assign Cell Type Labels
+# Example manual annotation
+tbi_cluster_ids <- Idents(tbi_merged_obj)
+tbi_cluster_annotations <- c("0" = "Excitatory Neurons",
+                         "1" = "Endothelial Cells",
+                         "2" = "Astrocytes",
+                         "3" = "Microglia",
+                         "4" = "Smooth Muscle Cells")  # etc.
+
+tbi_merged_obj$cell_type <- factor(tbi_cluster_annotations[as.character(tbi_cluster_ids)])
+
+
+# 🎨 Split UMAP for Sham vs. D3
+
+# This code generate umap similar to seurat umap using seurat Dimplot code
+
+head(tbi_merged_obj@meta.data)
+tbi_merged_obj$condition <- ifelse(grepl("Sham", colnames(tbi_merged_obj)), "Sham", "D3")
+tbi_merged_obj$condition <- factor(tbi_merged_obj$condition, levels = c("Sham", "D3"))
+table(tbi_merged_obj$condition)
+
+DimPlot(tbi_merged_obj, reduction = "umap", split.by = "condition", label = TRUE, repel = TRUE) +
+  ggtitle("WT & ecEXT1 Sham vs. D3") +
+  theme_void()  # Removes background grid
+
+# 📊 Cluster proportion analysis per condition
+tbi_cluster_counts <- table(tbi_merged_obj$cell_type, tbi_merged_obj$condition)
+print(tbi_cluster_counts)
+
+# 🧪 Chi-square test
+chi_test <- chisq.test(tbi_cluster_counts)
+print("Chi-Square Test:")
+print(chi_test)
+
+# 📈 Violin plot of Ext1 gene across conditions
+VlnPlot(tbi_merged_obj, features = "Ext1", "Ext2", "Ndst1", "Hs3st1", group.by = "condition", pt.size = 0.1) +
+  stat_compare_means(label = "p.signif", method = "kruskal.test") +
+  ggtitle("Ext1 Expression Across Conditions") +
+  theme_void()
+
+# Optional: pairwise comparisons (post-hoc)
+pairwise_comparison <- pairwise.wilcox.test(FetchData(tbi_merged_obj, vars = "Ext1")$Ext1,
+                                            tbi_merged_obj$condition,
+                                            p.adjust.method = "BH")
+print("Pairwise Wilcoxon Comparisons for Ext1:")
+print(pairwise_comparison)
+
+
+🔥 Heatmap of HS Genes
+# Heparan sulfate biosynthesis genes (mouse)
+hs_genes <- c(
+  "Ext1", "Ext2", "Extl1", "Extl2", "Extl3",
+  "Ndst1", "Ndst2", "Ndst3", "Ndst4",
+  "Hs2st1", "Hs3st1", "Hs3st2", "Hs3st3a1", "Hs3st3b1",
+  "Hs6st1", "Hs6st2", "Hs6st3",
+  "Sulf1", "Sulf2",
+  "Gpc1", "Gpc2", "Gpc3", "Gpc4", "Gpc5", "Gpc6",
+  "Sdc1", "Sdc2", "Sdc3", "Sdc4"
+)
+
+# Set identities by condition and cell type
+tbi_merged_obj$group <- paste(tbi_merged_obj$condition, tbi_merged_obj$cell_type, sep = "_")
+Idents(tbi_merged_obj) <- "group"
+
+📊 Step 2: Calculate average expression
+# Average expression per condition-celltype group
+avg_exp_by_group <- AverageExpression(
+  merged_obj,
+  features = hs_genes,
+  assays = "RNA",
+  slot = "data",
+  group.by = "group"
+)$RNA
+
+# Optional: scale rows (genes)
+avg_exp_scaled <- t(scale(t(avg_exp_by_group)))
+
+🔥 Step 3: Heatmap with SVG export
+# Export heatmap as SVG for Illustrator
+svglite("HS_genes_celltype_condition_heatmap.svg", width = 14, height = 12)
+
+pheatmap(avg_exp_scaled,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         fontsize_row = 9,
+         fontsize_col = 8,
+         color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+         main = "Heparan Sulfate Gene Expression (by Cell Type & Condition)")
+
+dev.off()
+
+#---------------------------------------------------------------------------------------------------------------
+🎯  Highlight Gene on UMAP
+
+# 🎨 UMAP expression of a specific marker gene
+FeaturePlot(merged_obj, features = "GeneX", split.by = "condition", cols = c("lightgrey", "darkred")) +
+  ggtitle("UMAP Expression of GeneX Across Conditions") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+🎻 Violin Plot of Gene Expression
+
+# 🎻 Violin plot across conditions with stats
+VlnPlot(merged_obj, features = "GeneX", group.by = "condition", pt.size = 0.1) +
+  stat_compare_means(label = "p.signif", method = "kruskal.test") +
+  ggtitle("Expression of GeneX Across Conditions") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+🧪 Optional: Pairwise Stats (Post-hoc)
+pairwise_gene <- pairwise.wilcox.test(FetchData(merged_obj, vars = "GeneX")$GeneX,
+                                      merged_obj$condition,
+                                      p.adjust.method = "BH")
+print("Pairwise comparisons for GeneX:")
+print(pairwise_gene)
+
